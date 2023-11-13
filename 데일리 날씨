@@ -1,0 +1,74 @@
+from airflow import DAG
+from datetime import datetime
+import requests
+import json
+import pendulum
+import smtplib
+from email.mime.text import MIMEText
+from airflow.operators.dummy_operator import DummyOperator
+from airflow.operators.python_operator import PythonOperator
+
+local_tz = pendulum.timezone("Asia/Seoul")
+
+
+default_args ={
+	'owner':'test'
+}
+
+with DAG(
+	dag_id = 'today_weather',
+	start_date = datetime(2023, 11, 6, tzinfo=local_tz),
+	schedule_interval = '0 6 * * *',
+	default_args = default_args
+)as dag:
+
+	def print_weather():
+		url = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst'
+		key = 'eEvY5rw3KhX0Q/au/JznLrul9agKg+r4bhNMVpwj+JeUkofgcyNTQIZkzdSQBmkbMcnsaPUTAEsH5xTZUYtmXA=='
+		now = datetime.now()
+		now_date = now.strftime('%Y%m%d')
+
+
+		params = {'serviceKey': key, 'pageNo': '1', 'numOfRows': '1000','dataType': 'JSON', 'base_date': now_date, 'base_time': '0500', 'nx': '58', 'ny': '126' }
+ 
+
+		response = requests.get(url, params= params)
+		
+		data = json.loads(response.content)
+		data_zzin =data['response']['body']['items']['item']
+
+		#print(f"오늘 온도 : {data_zzin[0]['fcstValue']} 도 & 오늘 강수 확률은 {data_zzin[7]['fcstValue']}% 이다")
+		return [ data_zzin[0]['fcstValue'], data_zzin[7]['fcstValue'] ]
+	
+	def send_mail():
+		smtp = smtplib.SMTP('smtp.gmail.com', 587)
+		smtp.ehlo()
+		smtp.starttls()
+
+		from_id = 'kjs11945@gmail.com'
+		to_id = 'kjs119456@gmail.com'
+
+		app_pw = 'pbgy ropj dweu uwos'
+		smtp.login(from_id, app_pw)
+		
+		temp, p_rain = print_weather()
+		content = f"오늘 온도 : {temp} 도 & 오늘의 강수 확률은 {p_rain}% 입니다"
+		msg = MIMEText(content)
+		msg['Subject'] = '오늘의 날씨 드림'
+		
+		smtp.sendmail(from_id, to_id, msg.as_string())
+		smtp.quit()
+		
+
+	t1 = PythonOperator (
+		task_id = 'call_value',
+		python_callable = print_weather,
+	)
+	t2 = PythonOperator(
+		task_id='send_mail',
+		python_callable = send_mail,
+	)
+
+
+
+t1 >> t2
