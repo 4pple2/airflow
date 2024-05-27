@@ -3,7 +3,8 @@ from airflow import DAG
 
 from airflow.operators.empty import EmptyOperator
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
-snowflake_conn = SnowflakeOperator(snowflake_conn_id="snowflake_conn")
+
+
 
 dag_args = dict(
     dag_id="call_snowflake",
